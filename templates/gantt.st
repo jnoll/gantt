@@ -2,7 +2,9 @@
 \\usepackage{pgfgantt}
 \\usepackage[T1]{fontenc}
 \\renewcommand*\\familydefault{\\sfdefault} % set base font to sans serif.
-\\usepackage{$if(font)$$font$$else$lmodern$endif$}
+$if(font)$
+\\usepackage{$font$}
+$endif$
 \\begin{document}
 \\begin{ganttchart}[$if(chartoptions)$$chartoptions$$else$
   hgrid, 

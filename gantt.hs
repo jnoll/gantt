@@ -81,7 +81,7 @@ defaultGantt = Gantt {
                , entries = def           &= ignore
                , msg     = def           &= ignore
                -- Command line only options.
-               , font = "lmodern"        &= help "Typeface for printed chart"
+               , font = def              &= help "Typeface for printed chart"
                , standalone = False      &= help "Generate standlone latex file"
                , verbose = False         &= help "Print diagnostics as well"
                , file   = "test.gantt"   &= args &= typFile 
