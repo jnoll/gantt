@@ -4,16 +4,27 @@ import Control.Monad.Error
 import Data.Data (constrFields, toConstr, gmapQ, cast)
 import Data.List
 --import Data.Maybe (fromMaybe)
+import Data.String.Utils (replace)
 import Data.Time.Format (defaultTimeLocale, formatTime)
 import Data.Time.Calendar (addGregorianMonthsClip)
 import System.Console.CmdArgs
 import Text.StringTemplate as ST
-import Gantt
+import Parse
 
+replChar :: Char -> Char
+replChar ' ' = '-'
+replChar '.' = '-'
+replChar c = c
+itemName :: String -> String
+itemName s = map replChar s
 
 formatEntry :: ChartLine -> String
 formatEntry (Group n s e)   = printf "\\ganttgroup{%s}{%d}{%d}\t\\ganttnewline" n s e
 formatEntry (Task n s e)    = printf "\\ganttbar{%s}{%d}{%d}\t\\ganttnewline" n s e
+formatEntry (SlippedTask n s e s' e')  = let label = itemName n in
+                                         intercalate "\n" $ (printf "\\ganttbar[name=%s]{%s}{%d}{%d}\t\\ganttnewline" label n s e) :
+                                                         (printf "\\ganttbar[name=%sr]{%s'}{%d}{%d}\t\\ganttnewline" label n s' e') :
+                                                         [(printf "\\ganttlink{%s}{%sr}\t\\ganttnewline" label label)]
 formatEntry (Milestone n d) = printf "\\ganttmilestone{%s}{%d}\t\\ganttnewline" n d
 
 formatGantt :: Gantt -> String

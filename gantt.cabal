@@ -58,6 +58,7 @@ executable gantt
   build-depends: 
                  base
                  , HStringTemplate
+                 , MissingH
                  , cmdargs
                  , mtl
                  , parsec
