@@ -1,2 +1,6 @@
 cabal.sandbox.config
 .cabal-sandbox
+*.hi
+*.o
+gantt
+*~
