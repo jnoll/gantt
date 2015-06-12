@@ -5,7 +5,9 @@ import Control.Monad (when)
 import Text.ParserCombinators.Parsec
 import Text.ParserCombinators.Parsec.Number (int)
 import System.Console.CmdArgs -- hack: defines important defaults
-import Data.Time.Format (parseTimeM, defaultTimeLocale)
+import Data.Maybe (fromMaybe)
+import Data.Time.Locale.Compat (defaultTimeLocale)
+import Data.Time.Format (buildTime, parseTime)
 import Data.Time.Calendar (Day, fromGregorian)
 
 
@@ -31,6 +33,7 @@ data Gantt = Gantt {
     , font    :: String
 
     , standalone :: Bool
+    , outfile :: FilePath
     , verbose :: Bool
     , file    :: FilePath
     , template :: FilePath
@@ -43,9 +46,11 @@ data ConfigLine = Start Day
  deriving (Data, Typeable, Show)
 
 data ChartLine = Group String Int Int
-               | Task  String Int Int
+               | SlippedGroup String Int Int Int Int
+               | Task String Int Int
                | SlippedTask String Int Int Int Int
                | Milestone String Int
+               | SlippedMilestone String Int Int
  deriving (Data, Typeable, Show)
 
 
@@ -77,12 +82,11 @@ startDate :: GenParser Char Gantt ConfigLine
 startDate = 
   string "start:" >>
   spaces >>
-  aString >>= (\v -> 
-  parseTimeM True defaultTimeLocale "%Y-%m-%d" v >>= (\t -> 
-  getState >>= (\cfg ->
-  (when ((start cfg) == def) $ updateState (\cfg -> cfg { start = t })) >>
-  newline >>
-  (return $ Start t) )))
+  aString >>= (\v -> let t = (fromMaybe  (buildTime defaultTimeLocale []) $ parseTime defaultTimeLocale "%Y-%m-%d" v) in 
+                     getState >>= (\cfg ->
+                                   (when ((start cfg) == def) $ updateState (\cfg -> cfg { start = t })) >>
+                                   newline >>
+                                   (return $ Start t) ))
 
 
 duration :: GenParser Char Gantt ConfigLine
@@ -133,14 +137,11 @@ group =
   space >>
   spaces >>
   quotedString >>= (\nm -> 
-  space >>
-  spaces >> 
-  int >>= (\st -> 
-  space >>
-  spaces >>
-  int >>= (\end -> 
-  newline >>
-  (return $ Group nm st end) )))
+  range >>= (\(st, end) ->
+  try (newline >> (return $ Group nm st end) ) <|>  slippedGroup  nm st end))
+
+slippedGroup :: String -> Int -> Int -> GenParser Char Gantt ChartLine
+slippedGroup nm st end = range >>= (\(st', end') -> return $  SlippedGroup nm st end st' end')
 
 task :: GenParser Char Gantt ChartLine
 task = 
@@ -165,8 +166,11 @@ milestone =
   space >>
   spaces >>
   int >>= (\due -> 
-  newline >>
-  (return $ Milestone nm due)))
+  try (newline >> (return $ Milestone nm due) ) <|>  slippedMilestone  nm due))
+
+slippedMilestone :: String -> Int -> GenParser Char Gantt ChartLine
+slippedMilestone nm due = space >> spaces >> int >>= (\(due') -> return $  SlippedMilestone nm due due')
+
 
 
 range :: GenParser Char Gantt (Int, Int)

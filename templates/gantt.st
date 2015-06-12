@@ -6,6 +6,27 @@ $if(font)$
 \\usepackage{$font$}
 $endif$
 \\begin{document}
+\\newganttlinktype{slipstart}{
+\\ganttsetstartanchor{north west}
+\\ganttsetendanchor{north west}
+\\draw [dashed, |->|]
+(\\xLeft, \\yUpper+2) --
+(\\xRight, \\yLower+2);
+}
+\\newganttlinktype{slipend}{
+\\ganttsetstartanchor{south east}
+\\ganttsetendanchor{south east}
+\\draw [dashed, |->|]
+(\\xLeft, \\yUpper-2) --
+(\\xRight, \\yLower-2);
+}
+\\newganttlinktype{slipms}{
+\\ganttsetstartanchor{east}
+\\ganttsetendanchor{west}
+\\draw [dashed, ->]
+(\\xLeft, \\yUpper) --
+(\\xRight, \\yLower);
+}
 \\begin{ganttchart}[$if(chartoptions)$$chartoptions$$else$
   hgrid, 
   vgrid={*2{green, dashed},*1{blue, solid}},
@@ -26,6 +47,8 @@ $endif$
   bar label font=\\mdseries\\small\\color{black},
   bar label node/.append style={left=-1em, align=left, text width=9em},
   bar/.append style={draw=none, fill=black},
+%
+  link/.append style={[-tothick, blue},
 %
   milestone height=1,
   milestone top shift=0,

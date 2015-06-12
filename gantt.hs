@@ -1,13 +1,22 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+-- following for 'here' docs
+{-# LANGUAGE QuasiQuotes #-} 
 import Text.Printf (printf)
 import Control.Monad.Error
 import Data.Data (constrFields, toConstr, gmapQ, cast)
 import Data.List
 --import Data.Maybe (fromMaybe)
+import Data.String.Here (i)
 import Data.String.Utils (replace)
-import Data.Time.Format (defaultTimeLocale, formatTime)
+import Data.Time.Locale.Compat (defaultTimeLocale)
+import Data.Time.Format (formatTime)
 import Data.Time.Calendar (addGregorianMonthsClip)
 import System.Console.CmdArgs
+import System.Directory (getCurrentDirectory, setCurrentDirectory)
+import System.FilePath (takeExtension, takeBaseName, (</>), (<.>))
+import System.IO
+import System.IO.Temp (withSystemTempDirectory)
+import System.Process (system)
 import Text.StringTemplate as ST
 import Parse
 
@@ -18,21 +27,38 @@ replChar c = c
 itemName :: String -> String
 itemName s = map replChar s
 
+formatLink :: String -> Int -> Int -> Int -> Int -> String
+formatLink label s e s' e' | s < s' && e < e' = [i| \\ganttlink[link type=slipstart]{${label}}{${label}r} \\ganttnewline 
+                                                    \\ganttlink[link type=slipend]{${label}}{${label}r} \\ganttnewline |] 
+                           | s < s' = [i| \\ganttlink[link type=slipstart]{${label}}{${label}r} \\ganttnewline |]
+                           | e < e' = [i| \\ganttlink[link type=slipend]{${label}}{${label}r}  \\ganttnewline |] 
+                           | True   = "\\ganttnewline"
+
 formatEntry :: ChartLine -> String
 formatEntry (Group n s e)   = printf "\\ganttgroup{%s}{%d}{%d}\t\\ganttnewline" n s e
+formatEntry (SlippedGroup n s e s' e')   = let label = itemName n in 
+                                     [i| \\ganttgroup[name=${label}, group/.append style={draw=black,fill=white}]{${n}}{${s}}{${e}} 
+                                         \\ganttgroup[name=${label}r]{${n}}{${s'}}{${e'}} \\ganttnewline 
+                                      |] ++ formatLink label s e s' e' 
+
 formatEntry (Task n s e)    = printf "\\ganttbar{%s}{%d}{%d}\t\\ganttnewline" n s e
 formatEntry (SlippedTask n s e s' e')  = let label = itemName n in
-                                         intercalate "\n" $ (printf "\\ganttbar[name=%s]{%s}{%d}{%d}\t\\ganttnewline" label n s e) :
-                                                         (printf "\\ganttbar[name=%sr]{%s'}{%d}{%d}\t\\ganttnewline" label n s' e') :
-                                                         [(printf "\\ganttlink{%s}{%sr}\t\\ganttnewline" label label)]
-formatEntry (Milestone n d) = printf "\\ganttmilestone{%s}{%d}\t\\ganttnewline" n d
+                                         [i| \\ganttbar[name=${label}, bar/.append style={draw=black, fill=white}]{${n}}{${s}}{${e}}\t
+                                             \\ganttbar[name=${label}r]{${n}'}{${s'}}{${e'}}\t\\ganttnewline 
+                                          |] ++ formatLink label s e s' e' 
 
+formatEntry (Milestone n d) = printf "\\ganttmilestone{%s}{%d}\t\\ganttnewline" n d
+formatEntry (SlippedMilestone n d d') = let label = itemName n in 
+                                        [i| \\ganttmilestone[name=${label}, milestone/.append style={draw=black, fill=white}]{${n}}{${d}} 
+                                            \\ganttmilestone[name=${label}r]{${n}}{${d'}} \\ganttnewline 
+                                            \\ganttlink[link type=slipms]{${label}}{${label}r}\t\\ganttnewline 
+                                         |] 
 formatGantt :: Gantt -> String
 formatGantt g = 
     intercalate "\n" $ map formatEntry (entries g)
 
-printGantt :: Gantt -> ST.StringTemplate String -> IO ()
-printGantt g tmpl = do
+printGantt :: Gantt -> ST.StringTemplate String -> Handle -> IO ()
+printGantt g tmpl h = do
   when (verbose g) $ do
     putStrLn "--- gantt ---"
     putStrLn $ show $ g
@@ -45,17 +71,8 @@ printGantt g tmpl = do
     putStrLn "--- body ---"
     putStrLn $ body
     putStrLn "--- ------ ---"
+  hPutStrLn h $ ST.toString $ (ST.setManyAttrib $ filter (\x -> x /= def) $ showEm g)  $ ST.setAttribute "end" (formatTime defaultTimeLocale "%Y-%m" $ end_date) $ ST.setAttribute "body" body tmpl
 
-    
-  putStrLn $ ST.toString $ (ST.setManyAttrib $ filter (\x -> x /= def) $ showEm g)  $ ST.setAttribute "end" (formatTime defaultTimeLocale "%Y-%m" $ end_date) $ ST.setAttribute "body" body tmpl
-
---[ ("chartoptions", (chartopts g))
---                                           , ("font", (font g))
---                                           , ("dur", show (dur g))
---                                           , ("start", formatTime defaultTimeLocale "%Y-%m" $ (start g))
---                                           , ("end", formatTime defaultTimeLocale "%Y-%m" $ end_date)
---                                           , ("body", body)
---                                           ] tmpl
 
 
 -- Command line parsing and processing --------------------------------------------------------------------------
@@ -94,6 +111,7 @@ defaultGantt = Gantt {
                -- Command line only options.
                , font = def              &= help "Typeface for printed chart"
                , standalone = False      &= help "Generate standlone latex file"
+               , outfile = "stdout"      &= help "Output file"
                , verbose = False         &= help "Print diagnostics as well"
                , file   = "test.gantt"   &= args &= typFile 
                , template = "templates/gantt.st" &= help "Template for standalone output"
@@ -102,7 +120,18 @@ defaultGantt = Gantt {
        &= summary "Budget calculater v0.1, (C) 2015 John Noll"
        &= program "main"
 
-
+makePDF :: Gantt -> String -> FilePath -> IO ()
+makePDF g tmpl outfile = getCurrentDirectory >>= (\cwd ->
+                               withSystemTempDirectory "ganttpdf"  (\d ->
+                               setCurrentDirectory d >>
+                               let texFile = (takeBaseName outfile) <.> "tex" in
+                               openFile texFile WriteMode >>= (\h -> 
+                               printGantt g (ST.newSTMP tmpl) h >> 
+                               hClose h >>
+                               (system $ "pdflatex " ++ texFile ++ " > /dev/null" ) >>
+                               setCurrentDirectory cwd >>
+                               (system $ "cp " ++ (d </> (takeBaseName texFile) <.> "pdf") ++ " " ++ outfile) >> 
+                               return () )))
 main :: IO ()
 main = do
   cfg <- cmdArgs defaultGantt
@@ -115,5 +144,14 @@ main = do
   c <- readFile (file cfg)
   case parseGantt cfg c of
     Left e -> putStrLn $ show $ e
-    Right g -> printGantt g (ST.newSTMP t)
-  
+    Right g -> if (outfile cfg) == "stdout" then printGantt g (ST.newSTMP t) stdout else 
+                   case takeExtension (outfile cfg) of
+                     ".pdf" -> makePDF g t (outfile cfg) 
+                     ".png" -> let pdfFile = (takeBaseName (outfile cfg)) <.> "pdf" in
+                               (makePDF g t $ pdfFile) >>
+                               -- the density is high so image can be resized without pixelating.
+                               (system $ "convert -density 1200 -quality 100 " ++ pdfFile ++ " " ++ (outfile cfg)) >>
+                               return ()
+                     otherwise -> (openFile (outfile cfg) WriteMode >>= (\h ->
+                                   printGantt g (ST.newSTMP t) h >> hClose h))
+
