@@ -1,15 +1,24 @@
-all: gantt
+GANTT_CHART=stack exec gantt-chart --
+all: test
 
-%: %.hs
-	cabal exec ghc -- --make -fwarn-unused-imports $<
+build:
+	stack build
 
-%.cgi: %.hs
-	cabal exec ghc -- --make  $< -o $@
+test: build
+	$(GANTT_CHART) monthly.gantt
+	$(GANTT_CHART) -o daily.pdf daily.gantt
+	$(GANTT_CHART) -o monthly.pdf monthly.gantt
 
-%.profiled: %.hs
-	cabal exec ghc -- --make -prof -auto-all -caf-all -rtsopts  $<
+
+%.tex: %.gantt templates/gantt.st
+	$(GANTT_CHART) $< > $@
+
+test-%: build
+	$(GANTT_CHART) -v -o $(*).pdf $(*).gantt
+	evince $(*).pdf
+
 
 clean:
-	rm -f *.hi *.o
+	rm -f *.hi *.o *.pdf
 
 gantt: Parse.hs

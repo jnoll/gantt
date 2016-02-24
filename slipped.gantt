@@ -1,0 +1,13 @@
+start: 2015-01-01
+dur: 12
+period: monthly
+
+G "WP1" 1 6
+T "T1.1" 1 3
+T "T1.2 slipped" 4 6 8 10
+M "M1" 6
+G "WP2 slipped" 7 10 9 12
+T "T2.1" 7 8
+T "T2.2slipstart" 9 12 10 12 
+T "T2.3slipend" 10 11 10 12
+M "M2 slipped" 10 12

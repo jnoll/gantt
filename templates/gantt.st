@@ -6,6 +6,7 @@ $if(font)$
 \\usepackage{$font$}
 $endif$
 \\begin{document}
+
 \\newganttlinktype{slipstart}{
 \\ganttsetstartanchor{north west}
 \\ganttsetendanchor{north west}
@@ -13,6 +14,7 @@ $endif$
 (\\xLeft, \\yUpper+2) --
 (\\xRight, \\yLower+2);
 }
+
 \\newganttlinktype{slipend}{
 \\ganttsetstartanchor{south east}
 \\ganttsetendanchor{south east}
@@ -20,6 +22,7 @@ $endif$
 (\\xLeft, \\yUpper-2) --
 (\\xRight, \\yLower-2);
 }
+
 \\newganttlinktype{slipms}{
 \\ganttsetstartanchor{east}
 \\ganttsetendanchor{west}
@@ -27,12 +30,21 @@ $endif$
 (\\xLeft, \\yUpper) --
 (\\xRight, \\yLower);
 }
-\\begin{ganttchart}[$if(chartoptions)$$chartoptions$$else$
-  hgrid, 
-  vgrid={*2{green, dashed},*1{blue, solid}},
+
+\\def\\pgfcalendarweekdayletter#1{\\ifcase#1M\\or T\\or W\\or R\\or F\\or S\\or U\\fi}
+
+\\def\\pgfcalendarmonthletter#1{\\ifcase#1o\\or J\\or F\\or M\\or A\\or M\\or J\\or J\\or A\\or S\\or O\\or N\\or D\\fi}
+
+\\begin{ganttchart}[%
+  $if(chartoptions)$$chartoptions$$else$
+  hgrid,   
+  $vgrid$
+  time slot format=isodate,
   y unit chart=\\baselineskip,
   y unit title=\\baselineskip,
   title height=1,
+%
+  $todayDate$
 %
   group left shift=0,
   group right shift=0,
@@ -49,18 +61,9 @@ $endif$
   bar/.append style={draw=none, fill=black},
 %
   link/.append style={[-tothick, blue},
-%
-  milestone height=1,
-  milestone top shift=0,
-  milestone label node/.append style={left=-.5em, align=left, text width=9em},
-%
-%  include title in canvas=false,
-%  compress calendar
-$endif$]{1}{$dur$}
+$endif$]{$start$}{$end$}
 $if(start)$
-\\gantttitlecalendar*[time slot format=isodate-yearmonth, compress calendar]{$start$}{$end$}{year} 	\\\\
-\\gantttitlecalendar*[time slot format=isodate-yearmonth, compress calendar, title label font=\\tiny]{$start$}{$end$}{month=shortname} 	\\\\
-\\gantttitlelist{1,...,$dur$}{1}	\\\\
+$calendar$
 $endif$
 $body$
 \\end{ganttchart}

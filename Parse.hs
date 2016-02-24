@@ -3,8 +3,10 @@ module Parse  (parseGantt, Period(..), Gantt(..), ChartLine(..), Day(..))
 where
 import Control.Monad (when)
 import Text.ParserCombinators.Parsec
-import Text.ParserCombinators.Parsec.Number (int)
+--import Text.ParserCombinators.Parsec.Number (int)
 import System.Console.CmdArgs -- hack: defines important defaults
+import Data.Char (digitToInt)
+import Data.List (foldl')
 import Data.Maybe (fromMaybe)
 import Data.Time.Locale.Compat (defaultTimeLocale)
 import Data.Time.Format (buildTime, parseTime)
@@ -17,22 +19,24 @@ instance Default Day where
 defaultDay :: Day
 defaultDay = def
 
-data Period = Monthly | Quarterly | Yearly
+data Period = Daily | Weekly | Monthly | Quarterly | Yearly | DefaultPeriod
  deriving (Data, Typeable, Show, Eq)
 
 instance Default Period where
-    def = Monthly
+    def = DefaultPeriod
 
 data Gantt = Gantt {
       start :: Day
     , dur :: Int
     , period :: Period
+    , periodSize :: Period
     , entries :: [ChartLine]
     , msg     :: String
+    , today :: Day
     -- Command line only options.
     , font    :: String
-
     , standalone :: Bool
+    , markToday :: Bool 
     , outfile :: FilePath
     , verbose :: Bool
     , file    :: FilePath
@@ -42,6 +46,7 @@ data Gantt = Gantt {
 
 data ConfigLine = Start Day 
                 | Dur Int
+                | Today Day
                 | Period Period
  deriving (Data, Typeable, Show)
 
@@ -51,6 +56,8 @@ data ChartLine = Group String Int Int
                | SlippedTask String Int Int Int Int
                | Milestone String Int
                | SlippedMilestone String Int Int
+               | Deliverable String Int
+               | SlippedDeliverable String Int Int
  deriving (Data, Typeable, Show)
 
 
@@ -74,7 +81,7 @@ config = updateState (\cfg -> cfg {msg = (msg cfg) ++ " config;" }) >>
 configline :: GenParser Char Gantt ConfigLine
 configline = 
   updateState (\cfg -> cfg {msg = (msg cfg) ++ " configline;" }) >>
-  (try startDate <|> try duration <|> try reportBy) >>= (\l -> 
+  (try startDate <|> try duration <|> try reportPeriodSize <|> try reportBy <|> try todayLine) >>= (\l -> 
   skipMany blankline >>
   return l)
 
@@ -99,9 +106,19 @@ duration =
   newline >>
   (return $ Dur v) ))
 
+todayLine :: GenParser Char Gantt ConfigLine
+todayLine = 
+  string "today:" >>
+  spaces >>
+  aString >>= (\v -> let t = (fromMaybe  (buildTime defaultTimeLocale []) $ parseTime defaultTimeLocale "%Y-%m-%d" v) in 
+                     getState >>= (\cfg ->
+                                   (when ((today cfg) == def) $ updateState (\cfg -> cfg { today = t })) >>
+                                   newline >>
+                                   (return $ Today t) ))
+
 reportBy :: GenParser Char Gantt ConfigLine
 reportBy = 
-  string "period:" >>
+  (try (string "period:") <|> try (string "report:")) >>
   spaces >>
   reportPeriod >>= (\p -> 
   getState >>= (\cfg -> 
@@ -109,8 +126,14 @@ reportBy =
   (return $ Period p)))
 
 reportPeriod :: GenParser Char Gantt Period
-reportPeriod =  try monthly <|> try quarterly <|> try yearly
+reportPeriod =  try daily <|> try weekly <|> try monthly <|> try quarterly <|> try yearly
   
+daily :: GenParser Char Gantt Period
+daily = string "daily" >> return Daily
+  
+weekly :: GenParser Char Gantt Period
+weekly = string "weekly" >> return Weekly
+
 monthly :: GenParser Char Gantt Period
 monthly = string "monthly" >> return Monthly
           
@@ -120,6 +143,34 @@ quarterly = string "quarterly" >> return Quarterly
 yearly :: GenParser Char Gantt Period
 yearly =  string "yearly" >> return Yearly
 
+reportPeriodSize :: GenParser Char Gantt ConfigLine
+reportPeriodSize = 
+  string "size:" >>
+  spaces >>
+  periodsize >>= (\p -> 
+  getState >>= (\cfg -> 
+  (when ((periodSize cfg) == def) $ setState cfg { periodSize = p }) >>
+  (return $ Period p)))
+
+periodsize :: GenParser Char Gantt Period
+periodsize =  try days <|> try weeks <|> try months <|> try quarters <|> try years
+
+days :: GenParser Char Gantt Period
+days = string "days" >> return Daily
+
+weeks :: GenParser Char Gantt Period
+weeks = string "weeks" >> return Weekly
+
+months :: GenParser Char Gantt Period
+months = string "months" >> return Monthly
+          
+quarters :: GenParser Char Gantt Period
+quarters = string "quarters" >> return Quarterly
+
+years :: GenParser Char Gantt Period
+years =  string "years" >> return Yearly
+
+
 -- Chart entries -----------------------------------------
 chart :: GenParser Char Gantt [ChartLine]
 chart = many chartline
@@ -127,7 +178,7 @@ chart = many chartline
 chartline :: GenParser Char Gantt ChartLine
 chartline = 
   updateState (\cfg -> cfg {msg = (msg cfg) ++ " chartline: " }) >>
-  (try group <|> try task <|> try milestone) >>= (\l ->
+  (try group <|> try task <|> try milestone <|> try deliverable) >>= (\l ->
   skipMany blankline >> return l)
 
 group :: GenParser Char Gantt ChartLine
@@ -171,6 +222,21 @@ milestone =
 slippedMilestone :: String -> Int -> GenParser Char Gantt ChartLine
 slippedMilestone nm due = space >> spaces >> int >>= (\(due') -> return $  SlippedMilestone nm due due')
 
+deliverable :: GenParser Char Gantt ChartLine
+deliverable = 
+  updateState (\cfg -> cfg {msg = (msg cfg) ++ " deliverable;" }) >>
+  string "D" >>
+  space >>
+  spaces >> 
+  quotedString >>= (\nm ->
+  space >>
+  spaces >>
+  int >>= (\due -> 
+  try (newline >> (return $ Deliverable nm due) ) <|>  slippedDeliverable  nm due))
+
+slippedDeliverable :: String -> Int -> GenParser Char Gantt ChartLine
+slippedDeliverable nm due = space >> spaces >> int >>= (\(due') -> return $  SlippedDeliverable nm due due')
+
 
 
 range :: GenParser Char Gantt (Int, Int)
@@ -195,3 +261,9 @@ aString =  spaces >> many (noneOf " \t\n\r")
   
 blankline :: GenParser Char Gantt ()
 blankline = try (manyTill (oneOf " \t") (newline) >> return ())
+
+-- | Needs @foldl'@ from Data.List and 
+-- @digitToInt@ from Data.Char.
+-- from: http://stackoverflow.com/questions/10726085/how-do-i-get-parsec-to-let-me-call-read-int/10726784#10726784
+--positiveNatural :: Stream s m Char => ParsecT s u m Int
+int = many1 digit >>= (\s -> return $ foldl' (\a i -> a * 10 + digitToInt i) 0 s)
