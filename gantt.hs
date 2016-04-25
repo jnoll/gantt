@@ -75,7 +75,7 @@ formatEntry (SlippedTask n st end st' end') = do
  \\ganttbar[name=${label}r, bar/.append style={draw=black, fill=${slipColor}}]{${n}}{${s'}}{${e'}}
  |] ++ formatLink label s e s' e'
 
-formatEntry (Milestone n due) = endToDay due >>= (\end_day -> return $ printf "\\ganttmilestone{%s}{%s}\t\\ganttnewline" n (formatTime defaultTimeLocale "%F" end_day))
+formatEntry (Milestone n due) = endToDay due >>= (\end_day -> return $ printf "\\ganttmilestone[milestone/.append style={draw=black, fill=blue}]{%s}{%s}\t\\ganttnewline" n (formatTime defaultTimeLocale "%F" end_day))
 
 formatEntry (SlippedMilestone n due due') = do
     let label = itemName n 
@@ -90,7 +90,7 @@ formatEntry (SlippedMilestone n due due') = do
 
 -- This is a hack to get different color diamonds.
 formatEntry (Deliverable n d) = endToDay d >>= (\end_day -> return $ 
-    printf "\\ganttmilestone[milestone/.append style={draw=black, fill=green}]{%s}{%s}\t\\ganttnewline" n (formatTime defaultTimeLocale "%F" end_day))
+    printf "\\ganttmilestone[milestone/.append style={draw=black, fill=gray}]{%s}{%s}\t\\ganttnewline" n (formatTime defaultTimeLocale "%F" end_day))
 
 formatEntry (SlippedDeliverable n due due') = do
     let label = itemName n 
@@ -129,6 +129,9 @@ formatCalendar Daily start end = [i|
 formatCalendar Weekly start end = [i|
  \\gantttitlecalendar*[time slot format=isodate-yearmonth, title label font=\\tiny]{${start}}{${end}}{year, month=shortname} \\ganttnewline 
  |]
+formatCalendar Monthly start end = [i|
+ \\gantttitlecalendar*[time slot format=isodate-yearmonth, title label font=\\tiny]{${start}}{${end}}{year, month=shortname} \\ganttnewline 
+ |]
 -- default is monthly
 formatCalendar _ start end = [i|
  \\gantttitlecalendar*[time slot format=isodate-yearmonth, compress calendar, title label font=\\tiny]{${start}}{${end}}{year, month=shortname} \\ganttnewline 
@@ -153,6 +156,15 @@ formatGrid g = case (outSize g) of
   milestone top shift=.125,
   milestone left shift=-2,
   milestone right shift=2,
+  milestone label node/.append style={left=-.5em, align=left, text width=9em},
+  %%%% /formatGrid|]
+                 Monthly -> let offset = (-) 7 $ dayOfWeek (start g) in [i|%%%% formatGrid Monthly
+  vgrid={*${offset}{white},{green, dotted},*{6}{white},{green, dotted},*{6}{white},{green, dotted},*{6}{white},{blue, solid},*{${7 - offset -1}}{white}},
+  x unit=.5pt,                  % try to get months to reflect actual dates
+  milestone height=.75,
+  milestone top shift=.125,
+  milestone left shift=-4,
+  milestone right shift=4,
   milestone label node/.append style={left=-.5em, align=left, text width=9em},
   %%%% /formatGrid|]
                  Quarterly -> [i|%%%% formatGrid Quarterly
