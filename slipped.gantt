@@ -2,12 +2,17 @@ start: 2015-01-01
 dur: 12
 period: monthly
 
-G "WP1" 1 6
-T "T1.1" 1 3
-T "T1.2 slipped" 4 6 8 10
-M "M1" 6
-G "WP2 slipped" 7 10 9 12
-T "T2.1" 7 8
-T "T2.2slipstart" 9 12 10 12 
-T "T2.3slipend" 10 11 10 12
-M "M2 slipped" 10 12
+G "WP 0-6" 0 6
+T "T 0-3" 0 3
+T "T 4-6 slipped 8-10"  4 6  8 10
+T "T 4-6 early 4-5"    4 6  4 5
+M "M 6" 6
+G "WP 7-10 slipped 9-12"   7 10 9 12
+T "T 7-8" 7 8
+T "T 9-12 slipstart 10-12" 9 12 10 12 
+T "T 10-11 slipend 10-12"  10 11 10 12
+T "T 9-12 earlystart 8-12" 9 12 8 12 
+T "T 10-12 earlyend 10-11"  10 12 10 11
+T "T 9-11 earlystart lateend 8-12" 9 11 8 12
+M "M 10 slipped 12"    10 12
+M "M 10 early 9" 	  10  9

@@ -28,8 +28,8 @@ instance Default Period where
 data Gantt = Gantt {
       start :: Day
     , dur :: Int
-    , period :: Period
-    , periodSize :: Period
+    , inSize :: Period
+    , outSize :: Period
     , entries :: [ChartLine]
     , msg     :: String
     , today :: Day
@@ -122,7 +122,7 @@ reportBy =
   spaces >>
   reportPeriod >>= (\p -> 
   getState >>= (\cfg -> 
-  (when ((period cfg) == def) $ setState cfg { period = p }) >>
+  (when ((outSize cfg) == def) $ setState cfg { outSize = p }) >>
   (return $ Period p)))
 
 reportPeriod :: GenParser Char Gantt Period
@@ -149,7 +149,7 @@ reportPeriodSize =
   spaces >>
   periodsize >>= (\p -> 
   getState >>= (\cfg -> 
-  (when ((periodSize cfg) == def) $ setState cfg { periodSize = p }) >>
+  (when ((inSize cfg) == def) $ setState cfg { inSize = p }) >>
   (return $ Period p)))
 
 periodsize :: GenParser Char Gantt Period

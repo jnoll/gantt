@@ -3,6 +3,7 @@
 {-# LANGUAGE QuasiQuotes #-} 
 --import Data.Maybe (fromMaybe)
 import Control.Monad.Error
+import Control.Monad.Reader
 import Data.Data (constrFields, toConstr, gmapQ, cast)
 import Data.List
 import Data.String.Here (i)
@@ -31,69 +32,80 @@ itemName :: String -> String
 itemName s = map replChar s
 
 formatLink :: String -> Day -> Day -> Day -> Day -> String
-formatLink label s e s' e' | s < s' && e < e' = [i| \\ganttlink[link type=slipstart]{${label}}{${label}r} \\ganttnewline 
+formatLink label s e s' e' | s < s' && e < e' = [i| \\ganttlink[link type=slipstart]{${label}}{${label}r} %
                                                     \\ganttlink[link type=slipend]{${label}}{${label}r} \\ganttnewline |] 
                            | s < s' = [i| \\ganttlink[link type=slipstart]{${label}}{${label}r} \\ganttnewline |]
                            | e < e' = [i| \\ganttlink[link type=slipend]{${label}}{${label}r}  \\ganttnewline |] 
                            | True   = "\\ganttnewline"
 
-formatEntry :: Gantt -> ChartLine -> String
-formatEntry g (Group n s e) = printf "\\ganttgroup{%s}{%s}{%s}\t\\ganttnewline" n (formatTime defaultTimeLocale "%F" $ startToDay g s) (formatTime defaultTimeLocale "%F" $ endToDay g e)
+formatEntry :: ChartLine -> Reader Gantt String
+formatEntry (Group n s e) = do
+  st_day <- startToDay s
+  end_day <- endToDay e
+  return $ printf "\\ganttgroup{%s}{%s}{%s}\t\\ganttnewline" n 
+                            (formatTime defaultTimeLocale "%F" st_day) 
+                            (formatTime defaultTimeLocale "%F" end_day )
 
-formatEntry g (SlippedGroup n st end st' end') = 
+formatEntry (SlippedGroup n st end st' end') = 
+    do
     let label = itemName n 
-        s = startToDay g st
-        e = endToDay g end
-        s' = startToDay g st'
-        e' = endToDay g end'
-    in [i|%
- \\ganttgroup[name=${label}, group/.append style={draw=black,fill=white}]{${n}}{${s}}{${e}} 
- \\ganttgroup[name=${label}r]{${n}}{${s'}}{${e'}} \\ganttnewline 
- |] ++ formatLink label s e s' e' 
+    s <- startToDay st
+    e <- endToDay end
+    s' <- startToDay st'
+    e' <- endToDay end'
+    let slipColor = if end < end' then "red" else "green"
+    return $ [i|%
+ \\ganttgroup[name=${label}, group/.append style={draw=black,fill=black}]{${n}}{${s}}{${e}} 
+ \\ganttgroup[name=${label}r, group/.append style={draw=black,fill=${slipColor}}]{${n}}{${s'}}{${e'}}
+ |] ++ formatLink label s e s' e'
 
-formatEntry g (Task n s e)    = printf "\\ganttbar{%s}{%s}{%s}\t\\ganttnewline" n (formatTime defaultTimeLocale "%F" $ startToDay g s) (formatTime defaultTimeLocale "%Y-%m-%d" $ endToDay g e)
+formatEntry (Task n s e) = endToDay e >>= (\end_day -> 
+                           startToDay s >>= (\st_day ->
+                           return $ printf "\\ganttbar{%s}{%s}{%s}\t\\ganttnewline" n (formatTime defaultTimeLocale "%F" st_day) (formatTime defaultTimeLocale "%Y-%m-%d" end_day)))
 
-formatEntry g (SlippedTask n st end st' end')  = 
+formatEntry (SlippedTask n st end st' end') = do
     let label = itemName n 
-        s = startToDay g st
-        e = endToDay g end
-        s' = startToDay g st'
-        e' = endToDay g end'
-    in [i|%
- \\ganttbar[name=${label}, bar/.append style={draw=black, fill=white}]{${n}}{${s}}{${e}}\t
- \\ganttbar[name=${label}r]{${n}'}{${s'}}{${e'}} \\ganttnewline 
- |] ++ formatLink label s e s' e' 
+    s <- startToDay st
+    e <- endToDay end
+    s' <- startToDay st'
+    e' <- endToDay end'
+    let slipColor = if end < end' then "red" else "green"
+    return $ [i|%
+ \\ganttbar[name=${label}, bar/.append style={draw=black, fill=black}]{${n}}{${s}}{${e}}
+ \\ganttbar[name=${label}r, bar/.append style={draw=black, fill=${slipColor}}]{${n}}{${s'}}{${e'}}
+ |] ++ formatLink label s e s' e'
 
-formatEntry g (Milestone n due) = printf "\\ganttmilestone{%s}{%s}\t\\ganttnewline" n (formatTime defaultTimeLocale "%F" $ endToDay g due)
+formatEntry (Milestone n due) = endToDay due >>= (\end_day -> return $ printf "\\ganttmilestone{%s}{%s}\t\\ganttnewline" n (formatTime defaultTimeLocale "%F" end_day))
 
-formatEntry g (SlippedMilestone n due due') = 
+formatEntry (SlippedMilestone n due due') = do
     let label = itemName n 
-        d  = formatTime defaultTimeLocale "%F" $ endToDay g due
-        d' = formatTime defaultTimeLocale "%F" $ endToDay g due'
-    in [i|%
- \\ganttmilestone[name=${label}, milestone/.append style={draw=black, fill=white}]{${n}}{${d}}
- \\ganttmilestone[name=${label}r]{${n}}{${d'}} \\ganttnewline 
+    d <- endToDay due >>= (\e -> return $ formatTime defaultTimeLocale "%F" e)
+    d'<- endToDay due' >>= (\e -> return $ formatTime defaultTimeLocale "%F" e)
+    let slipColor = if d < d' then "red" else "green"
+    return $ [i|%
+ \\ganttmilestone[name=${label}, milestone/.append style={draw=black, fill=black}]{${n}}{${d}}
+ \\ganttmilestone[name=${label}r, milestone/.append style={draw=black, fill=${slipColor}}]{${n}}{${d'}}
  \\ganttlink[link type=slipms]{${label}}{${label}r} \\ganttnewline 
- |] 
+ |]
 
 -- This is a hack to get different color diamonds.
-formatEntry g (Deliverable n d) = 
-    printf "\\ganttmilestone[milestone/.append style={draw=black, fill=green}]{%s}{%s}\t\\ganttnewline" n (formatTime defaultTimeLocale "%F" $ endToDay g d)
+formatEntry (Deliverable n d) = endToDay d >>= (\end_day -> return $ 
+    printf "\\ganttmilestone[milestone/.append style={draw=black, fill=green}]{%s}{%s}\t\\ganttnewline" n (formatTime defaultTimeLocale "%F" end_day))
 
-formatEntry g (SlippedDeliverable n due due') =
+formatEntry (SlippedDeliverable n due due') = do
     let label = itemName n 
-        d  = formatTime defaultTimeLocale "%F" $ endToDay g due
-        d' = formatTime defaultTimeLocale "%F" $ endToDay g due'
-    in [i|%
- \\ganttmilestone[name=${label}, milestone/.append style={draw=black, fill=white}]{${n}}{${d}} 
- \\ganttmilestone[name=${label}r, milestone/.append style={draw=black, fill=green}]{${n}}{${d'}} \\ganttnewline 
+    d <- endToDay due >>= (\e -> return $ formatTime defaultTimeLocale "%F" e)
+    d'<- endToDay due' >>= (\e -> return $ formatTime defaultTimeLocale "%F" e)
+    let slipColor = if d < d' then "red" else "green"
+    return $ [i|%
+ \\ganttmilestone[name=${label}, milestone/.append style={draw=black, fill=black}]{${n}}{${d}} 
+ \\ganttmilestone[name=${label}r, milestone/.append style={draw=black, fill=${slipColor}}]{${n}}{${d'}}
  \\ganttlink[link type=slipms]{${label}}{${label}r} \\ganttnewline 
- |] 
+ |]
 
 
-formatGantt :: Gantt -> String
-formatGantt g = 
-    intercalate "\n" $ map (formatEntry g) $ (entries g)
+formatGantt :: Reader Gantt String
+formatGantt = asks (\g -> entries g) >>= (mapM formatEntry) >>= (\ls -> return $ intercalate "\n" ls )
 
 
 
@@ -126,89 +138,100 @@ formatCalendar _ start end = [i|
 dayOfWeek :: Day -> Int
 dayOfWeek d = let (_, _, n) = toWeekDate d in n
 
-formatGrid :: Gantt -> String
-formatGrid g = case (period g) of
-                 Daily -> let offset = (-) 7 $ dayOfWeek (start g) in [i|% -- formatGrid Daily 
+formatGrid :: Gantt ->  String
+formatGrid g = case (outSize g) of
+                 Daily -> let offset = (-) 7 $ dayOfWeek (start g) in [i|%%%% formatGrid Daily 
   vgrid={*${offset}{green, dashed},*1{blue, solid},*${7 - offset -1}{green, dashed},},
   milestone height=.75,
   milestone top shift=.125,
-  milestone  label node/.append style={left=-.5em, align=left, text width=9em},
-  % -- /formatGrid|]
-                 Weekly -> let offset = (-) 7 $ dayOfWeek (start g) in [i|% formatGrid Weekly
+  milestone label node/.append style={left=-.5em, align=left, text width=9em},
+  %%%% /formatGrid|]
+                 Weekly -> let offset = (-) 7 $ dayOfWeek (start g) in [i|%%%% formatGrid Weekly
   vgrid={*${offset}{white},*1{blue, solid},*${7 - offset -1}{white},},
   x unit=1pt,
   milestone height=.75,
   milestone top shift=.125,
   milestone left shift=-2,
   milestone right shift=2,
-  milestone  label node/.append style={left=-.5em, align=left, text width=9em},
-  % -- /formatGrid|]
-                 Quarterly -> [i|% -- formatGrid Quarterly
+  milestone label node/.append style={left=-.5em, align=left, text width=9em},
+  %%%% /formatGrid|]
+                 Quarterly -> [i|%%%% formatGrid Quarterly
   compress calendar, 
   vgrid={*2{white},*1{blue, solid}},
-  x unit=.5em,
+  x unit=.67em,
   milestone height=.75,
   milestone top shift=.125,
-  milestone left shift=-.5,
-  milestone right shift=.5,
-  milestone  label node/.append style={left=-.5em, align=left, text width=9em},
-  % -- /formatGrid|]
-                 otherwise -> [i|% -- formatGrid default
+%% doesn't work  milestone left shift=-.5,
+%% doesn't work  milestone right shift=.5,
+  milestone label node/.append style={left=-.5em, align=left, text width=9em},
+  %%%% /formatGrid|]
+                 otherwise -> [i|%%%% formatGrid default
   compress calendar, 
   vgrid={*2{green, dashed},*1{blue, solid}},
   milestone height=.75,
   milestone top shift=.125,
   milestone label node/.append style={left=-.5em, align=left, text width=9em}, 
-  % -- /formatGrid|]
+  %%%% /formatGrid|]
+
 
 formatToday :: Day -> String
 formatToday d = let ds = formatTime defaultTimeLocale "%F" d in 
-                if d == def then "% -- formatToday: today is def" else [i| today=${ds}, today rule/.style={draw=green, ultra thick}, |]
+                if d == def then "%%%% formatToday: today is def(ault)" 
+                else [i| today=${ds}, today rule/.style={draw=green, ultra thick}, |]
 
-calcPeriods :: Gantt -> Int -> Int
-calcPeriods g dur = 
-    let end_day = endToDay g dur in
-    case (period g) of
-      Daily     -> fromIntegral $ (+) 1 $ diffDays end_day (start g)
-      Weekly    -> ceiling $ (fromIntegral (diffDays end_day (start g))) / 7
-      Quarterly -> ceiling $ (fromIntegral (diffDays end_day (start g))) / 365 * 4
-      Yearly    -> ceiling $ (fromIntegral (diffDays end_day (start g))) / 365
-      otherwise -> ceiling $ (fromIntegral (diffDays end_day (start g))) / 365 * 12
+calcPeriods :: Int -> Reader Gantt Int
+calcPeriods dur = do
+  g <- ask
+  end_day <- endToDay dur
+  let p = inSize g
+      st_day = start g
+  return $ case p of
+      Daily     -> fromIntegral $ (+) 1 $ diffDays end_day st_day
+      Weekly    -> ceiling $ (fromIntegral (diffDays end_day st_day)) / 7
+      Quarterly -> ceiling $ (fromIntegral (diffDays end_day st_day)) / 365 * 4
+      Yearly    -> ceiling $ (fromIntegral (diffDays end_day st_day)) / 365
+      otherwise -> ceiling $ (fromIntegral (diffDays end_day st_day)) / 365 * 12
 
-
-calcEnd :: Gantt -> Day -> Int
-calcEnd g day = case (period g) of
-                      Daily  -> fromIntegral $ (+) 1 $  diffDays day (start g)
-                      Weekly -> round $ (fromIntegral (diffDays day (start g))) / 7
-                      Quarterly -> let (y, m, _) = toGregorian day
-                                       (st_y, _, _) = toGregorian (start g)
-                                   in ceiling $ (fromIntegral ((((fromIntegral y) - (fromIntegral st_y)) * 12) + m)) / 3
-                      Yearly -> let (y, m, _) = toGregorian day
-                                    (st_y, _, _) = toGregorian (start g)
-                                in (fromIntegral y) - (fromIntegral st_y)
-                      otherwise -> let (y, m, _) = toGregorian day
-                                       (st_y, st_m, _) = toGregorian (start g)
-                                   in (((fromIntegral y) -
-                                        (fromIntegral st_y)) * 12) + (m - st_m + 1)
+calcEnd :: Day -> Reader Gantt Int
+calcEnd day = do
+  g <- ask
+  return $ case (inSize g) of
+             Daily  -> fromIntegral $ (+) 1 $  diffDays day (start g)
+             Weekly -> round $ (fromIntegral (diffDays day (start g))) / 7
+             Quarterly -> let (y, m, _) = toGregorian day
+                              (st_y, _, _) = toGregorian (start g)
+                          in ceiling $ (fromIntegral ((((fromIntegral y) - (fromIntegral st_y)) * 12) + m)) / 3
+             Yearly -> let (y, m, _) = toGregorian day
+                           (st_y, _, _) = toGregorian (start g)
+                       in (fromIntegral y) - (fromIntegral st_y)
+             otherwise -> let (y, m, _) = toGregorian day
+                              (st_y, st_m, _) = toGregorian (start g)
+                          in (((fromIntegral y) - (fromIntegral st_y)) * 12) + (m - st_m + 1)
                                       
-calcStart :: Gantt -> Day -> Int
-calcStart g day = let s = calcEnd g day
-                  in case (period g) of
-                       Daily -> s 
-                       Weekly -> (+) 1 $ round  $ (fromIntegral $ diffDays day (start g))  / 7
-                       otherwise -> s
+calcStart :: Day -> Reader Gantt Int
+calcStart day = do
+  g <- ask
+  e <- calcEnd day 
+  let p = inSize g
+      s = start g
+  return $ case p of
+             Daily -> e 
+             Weekly -> (+) 1 $ round  $ (fromIntegral $ diffDays day s) / 7
+             otherwise -> e
 
--- convert a chart start offset into a Day.  Have to subtract one from the
--- offset to get the correct date, because charts begin at 1.
-startToDay :: Gantt -> Int -> Day
-startToDay g offset = 
-    let offset' = toInteger (offset - 1) in
-    case (periodSize g) of
-      Daily -> addDays offset' (start g) 
-      Weekly -> addDays (offset' * 7) (start g)
-      Quarterly -> addGregorianMonthsClip (offset' * 3) (start g)
-      Yearly -> addGregorianMonthsClip (offset' * 12) (start g)
-      otherwise -> addGregorianMonthsClip offset' (start g)
+
+-- convert a chart start offset into a Day.  The start period is
+-- actually the *end* of the previous period.
+startToDay :: Int -> Reader Gantt Day
+startToDay offset = do
+  g <- ask
+  return $ let offset' = toInteger (offset) in
+           case (inSize g) of
+             Daily -> addDays offset' (start g) 
+             Weekly -> addDays (toInteger (offset' * 7) + 0) (start g)
+             Quarterly -> addGregorianMonthsClip (offset' * 3) (start g)
+             Yearly -> addGregorianMonthsClip (offset' * 12) (start g)
+             otherwise -> addGregorianMonthsClip offset' (start g)
 
 endOfMonth :: Day -> Day
 endOfMonth day = let (y, m, _) = toGregorian day 
@@ -216,16 +239,18 @@ endOfMonth day = let (y, m, _) = toGregorian day
 
 -- Convert a chart end offset into a Day.  The calculated date has to
 -- be at the *end* of the period (for example, 28 Feb not 1 Feb).
-endToDay :: Gantt -> Int -> Day
-endToDay g offset = 
-    let offset' = toInteger (offset - 1) in
-    case (periodSize g) of
-      Daily -> addDays offset' (start g) -- no adjustment necessary?
-      Weekly -> addDays ((offset' * 7) + 6) (start g)
-      Quarterly -> endOfMonth $ addGregorianMonthsClip (toInteger (offset * 3) - 1) (start g)
-      Yearly -> endOfMonth $ addGregorianMonthsClip (toInteger (offset * 12) - 1) (start g)
-      otherwise -> endOfMonth $ addGregorianMonthsClip offset' (start g) -- Monthly is default
-
+endToDay :: Int -> Reader Gantt Day
+endToDay offset = do
+  g <- ask
+  let p = inSize g
+      st = start g
+      offset' = toInteger (offset - 1) 
+  return $ case p of
+             Daily -> addDays offset' st -- no adjustment necessary?
+             Weekly -> addDays ((offset' * 7) + 6) st
+             Quarterly -> endOfMonth $ addGregorianMonthsClip (toInteger (offset * 3) - 1) st
+             Yearly -> endOfMonth $ addGregorianMonthsClip (toInteger (offset * 12) - 1) st
+             otherwise -> endOfMonth $ addGregorianMonthsClip offset' st -- Monthly is default
 
 printGantt :: Gantt -> ST.StringTemplate String -> Handle -> IO ()
 printGantt g tmpl h = do
@@ -234,17 +259,17 @@ printGantt g tmpl h = do
     putStrLn $ show $ g
   let end = dur g :: Int
   let st = 1 :: Int
-  let end_date = endToDay g $ (dur g)
-  let body = formatGantt g 
+  let end_date = runReader (endToDay $ dur g) g
+  let body = runReader formatGantt g 
   when (verbose g) $ do
     putStrLn "--- body ---"
     putStrLn $ body
     putStrLn "--- ------ ---"
   hPutStrLn h $ ST.toString 
-                $ (ST.setManyAttrib $ filter (\(k, v) -> length v > 0) $ showEm g) 
+                $ (ST.setManyAttrib $ filter (\(k, v) -> length v > 0) $ showEm g)
                 $ (ST.setAttribute "vgrid" $ formatGrid g)
-                $ (ST.setAttribute "calendar" $ formatCalendar (period g) (start g) end_date)
-                $ (ST.setAttribute "numPeriods" $ calcPeriods g (dur g))
+                $ (ST.setAttribute "calendar" $ formatCalendar (outSize g) (start g) end_date)
+                $ (ST.setAttribute "numPeriods" $ runReader (calcPeriods $ dur g) g)
                 $ (ST.setAttribute "todayDate" $ formatToday (today g))
                 $ ST.setAttribute "end" (formatTime defaultTimeLocale "%F" $ end_date) -- end date, for calendar lines in monthly
                 $ ST.setAttribute "body" body -- actual chart elements
@@ -276,13 +301,13 @@ defaultGantt :: Gantt
 defaultGantt = Gantt { 
                  start  = def            &= help "Project start date"
                , dur    = def            &= help "Project duration (months)"
-               , periodSize = def        &= help "Period size (default: monthly)" 
-               , period = enum [ DefaultPeriod
-                               , Monthly &= help "Report Monthly (default)"
-                               , Daily   &= help "Report Daily"
-                               , Weekly  &= help "Report Weekly"
-                               , Quarterly &= help "Report Quarterly"
-                               , Yearly  &= help "Report Yearly"
+               , inSize = def            &= help "Input period size (default: monthly)" 
+               , outSize = enum [ DefaultPeriod
+                               , Monthly &= help "Output report Monthly (default)"
+                               , Daily   &= help "Output report Daily"
+                               , Weekly  &= help "Output report Weekly"
+                               , Quarterly &= help "Output report Quarterly"
+                               , Yearly  &= help "Output report Yearly"
                                ]
                                              
                , entries = def           &= ignore

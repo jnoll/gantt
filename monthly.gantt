@@ -1,15 +1,15 @@
 start: 2015-10-01
-dur: 12
+dur: 24
 size: months
 period: monthly
 
-G "WP1" 1 6
-T "T1.1" 1 3
-T "T1.2" 4 6
+G "WP1" 0 6
+T "T1.1" 0 3
+T "T1.2" 3 6
 M "M1" 6
-G "WP2" 7 12
-T "T2.1" 7 8
-T "T2.2" 9 10
-T "T2.3" 11 12
+G "WP2" 6 12
+T "T2.1" 6 8
+T "T2.2" 8 10
+T "T2.3" 10 12
 M "M2" 12
 D "D2" 12
