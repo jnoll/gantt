@@ -132,25 +132,37 @@ formatCalendar Weekly start end = [i|
 formatCalendar Monthly start end = [i|
  \\gantttitlecalendar*[time slot format=isodate-yearmonth, title label font=\\tiny]{${start}}{${end}}{year, month=shortname} \\ganttnewline 
  |]
--- default is monthly
+-- default is a monthly compressed calendar.
 formatCalendar _ start end = [i|
  \\gantttitlecalendar*[time slot format=isodate-yearmonth, compress calendar, title label font=\\tiny]{${start}}{${end}}{year, month=shortname} \\ganttnewline 
  |]
 -- \\gantttitlelist{1,...,$numPeriods$}{1} \\ganttnewline 
 
+-- 1 for Monday, 7 for Sunday
 dayOfWeek :: Day -> Int
 dayOfWeek d = let (_, _, n) = toWeekDate d in n
 
+grid :: Day -> (String, String)
+grid d = let offset = (-) 7 $ dayOfWeek d  
+             color = "white"
+             style = "solid" in 
+            case offset of
+            0 -> ([i||], [i|,*6{${color}, ${style}}|])
+            7 -> ([i|*6{${color}, ${style}},|], [i||])
+            otherwise -> ([i|*${offset - 1}{${color}, ${style}},|], [i|,*${7 - offset}{${color}, ${style}}|])
+                         
 formatGrid :: Gantt ->  String
 formatGrid g = case (outSize g) of
-                 Daily -> let offset = (-) 7 $ dayOfWeek (start g) in [i|%%%% formatGrid Daily 
-  vgrid={*${offset}{green, dashed},*1{blue, solid},*${7 - offset -1}{green, dashed},},
+                 Daily -> let (preg, postg) = grid (start g) 
+                          in [i|%%%% formatGrid Daily 
+  vgrid={*${preg}*1{blue, solid}${postg}},
   milestone height=.75,
   milestone top shift=.125,
   milestone label node/.append style={left=-.5em, align=left, text width=9em},
   %%%% /formatGrid|]
-                 Weekly -> let offset = (-) 7 $ dayOfWeek (start g) in [i|%%%% formatGrid Weekly
-  vgrid={*${offset}{white},*1{blue, solid},*${7 - offset -1}{white},},
+                 Weekly -> let (preg, postg) = grid (start g) 
+                           in [i|%%%% formatGrid Weekly
+  vgrid={${preg}*1{blue, solid}${postg}},
   x unit=1pt,
   milestone height=.75,
   milestone top shift=.125,
@@ -158,8 +170,9 @@ formatGrid g = case (outSize g) of
   milestone right shift=2,
   milestone label node/.append style={left=-.5em, align=left, text width=9em},
   %%%% /formatGrid|]
-                 Monthly -> let offset = (-) 7 $ dayOfWeek (start g) in [i|%%%% formatGrid Monthly
-  vgrid={*${offset}{white},{green, dotted},*{6}{white},{green, dotted},*{6}{white},{green, dotted},*{6}{white},{blue, solid},*{${7 - offset -1}}{white}},
+                 Monthly -> let (preg, postg) = grid (start g) 
+                            in [i|%%%% formatGrid Monthly
+  vgrid={${preg}*{6}{white},{green, dotted},*{6}{white},{green, dotted},*{6}{white},{blue, solid}${postg}},
   x unit=.5pt,                  % try to get months to reflect actual dates
   milestone height=.75,
   milestone top shift=.125,
@@ -263,6 +276,30 @@ endToDay offset = do
              Quarterly -> endOfMonth $ addGregorianMonthsClip (toInteger (offset * 3) - 1) st
              Yearly -> endOfMonth $ addGregorianMonthsClip (toInteger (offset * 12) - 1) st
              otherwise -> endOfMonth $ addGregorianMonthsClip offset' st -- Monthly is default
+
+before :: Day -> Day -> Bool
+before a b = if diffDays a b > 0 then True else False
+
+after :: Day -> Day -> Bool
+after a b = if diffDays a b < 0 then True else False
+
+
+computeRange :: Day -> Day -> Day -> Day -> (Day, Day)
+computeRange s' e' start end = 
+    if (before s' start) && (after e' end)  then  (start, end)
+       else if (before s' start) && (before e' end) then  (start, e')
+            else if (after  s' start) && (after  e' end) then  (s', end)
+                 else (s', e')
+
+dayRange :: Int -> Int -> Reader Gantt (Maybe (Day, Day))
+dayRange s e = do
+  g <- ask
+  end <- endToDay (dur g)
+  s' <- startToDay s
+  e' <- endToDay s
+  let r =  if before e' (start g)  || after s' end then  Nothing 
+           else Just $ computeRange s' e' (start g) end 
+  return r
 
 printGantt :: Gantt -> ST.StringTemplate String -> Handle -> IO ()
 printGantt g tmpl h = do
