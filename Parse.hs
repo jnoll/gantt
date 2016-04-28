@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable #-}
-module Parse  (parseGantt, Period(..), Gantt(..), ChartLine(..), Day(..))
+module Parse  (parseGantt, Period(..), Gantt(..), ChartLine(..), Day(..), defaultGantt, parseDate)
 where
 import Control.Monad (when)
 import Text.ParserCombinators.Parsec
@@ -28,6 +28,8 @@ instance Default Period where
 data Gantt = Gantt {
       start :: Day
     , dur :: Int
+    , windowStart :: Day
+    , windowDur :: Int
     , inSize :: Period
     , outSize :: Period
     , entries :: [ChartLine]
@@ -37,12 +39,34 @@ data Gantt = Gantt {
     , font    :: String
     , standalone :: Bool
     , markToday :: Bool 
-    , outfile :: FilePath
+--    , outfile :: FilePath
     , verbose :: Bool
     , file    :: FilePath
     , template :: FilePath
     , chartopts :: String
 } deriving (Data, Typeable, Show)
+
+defaultGantt = Gantt {
+      start = def
+    , dur = def
+    , windowStart = def
+    , windowDur = def
+    , inSize = def
+    , outSize = def
+    , entries = []
+    , msg = def
+    , today = def
+    -- Command line only options.
+    , font  = def
+    , standalone = True
+    , markToday = True
+--    , outfile :: FilePath
+    , verbose = False
+--    , file    :: FilePath
+    , template = def
+    , chartopts = def
+    , file = def
+} 
 
 data ConfigLine = Start Day 
                 | Dur Int
@@ -68,9 +92,10 @@ parseGantt cfg c = runParser gantt cfg (file cfg) c
 gantt :: GenParser Char Gantt Gantt
 gantt = 
   config >>
-  chart >>= (\es ->
-  getState >>= (\g -> 
-  (return $  g { entries = es }) ))
+  chart >>= 
+  (\es -> getState >>= 
+  (\g -> (return $  g { entries = es 
+                      }) ))
 
 -- Configuration -----------------------------------------
 
@@ -106,11 +131,14 @@ duration =
   newline >>
   (return $ Dur v) ))
 
+parseDate :: String -> Day
+parseDate v = (fromMaybe  (buildTime defaultTimeLocale []) $ parseTime defaultTimeLocale "%Y-%m-%d" v)
+
 todayLine :: GenParser Char Gantt ConfigLine
 todayLine = 
   string "today:" >>
   spaces >>
-  aString >>= (\v -> let t = (fromMaybe  (buildTime defaultTimeLocale []) $ parseTime defaultTimeLocale "%Y-%m-%d" v) in 
+  aString >>= (\v -> let t = parseDate v in 
                      getState >>= (\cfg ->
                                    (when ((today cfg) == def) $ updateState (\cfg -> cfg { today = t })) >>
                                    newline >>

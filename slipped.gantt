@@ -1,6 +1,7 @@
-start: 2015-01-01
+start: 2016-07-01
 dur: 12
 period: monthly
+
 
 G "WP 0-6" 0 6
 T "T 0-3" 0 3

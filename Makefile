@@ -14,7 +14,8 @@ test: build
 	$(GANTT_CHART) $< > $@
 
 test-%: build
-	$(GANTT_CHART) -v -o $(*).pdf $(*).gantt
+	$(GANTT_CHART) --verbose --winst=2016-08-01 --windur=4 -o $(*).tex $(*).gantt
+	pdflatex $(*)
 	evince $(*).pdf
 
 

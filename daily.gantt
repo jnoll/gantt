@@ -1,8 +1,8 @@
-start: 2015-01-01
+start: 2016-07-01
 dur: 31
 size: days
 period: daily
-today: 2015-01-02
+today: 2016-08-03
 
 G "WP1 0-15" 0 15
 T "T1.1 0-5" 0 5

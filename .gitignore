@@ -4,3 +4,8 @@ cabal.sandbox.config
 *.o
 gantt
 *~
+*.pdf
+*.aux
+*.log
+*.tex
+stack.yaml
