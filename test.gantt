@@ -1,9 +1,15 @@
+# Start date, in ISO format
 start: 2015-01-01
+# Duration in periods (default is months)
 dur: 12
 today: 2016-08-03
+# End of config block
 
+# G is a large bar to represent a work package
 G "WP1 0-6" 0 6
+# T is for "task"
 T "T1.1 0-3" 0 3
+# M is for "milestone"
 M "M1 1" 1
 M "M2 2" 2
 T "T1.2 3-6" 3 6
@@ -18,5 +24,7 @@ M "M5 10" 10
 T "T2.3 10-12" 10 12
 M "M5 11" 11
 M "M2 12" 12
+# D is for "deliverable"
 D "D2 12" 12
+# Done!
 
