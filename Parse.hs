@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable #-}
-module Parse  (parseGantt, Period(..), Gantt(..), ChartLine(..), Day(..), defaultGantt, parseDate)
+module Parse  (parseGantt, Period(..), Gantt(..), ChartLine(..), ChartType(..), Day(..), defaultGantt, defaultDay, parseDate)
 where
 import Control.Monad (when)
 import Text.ParserCombinators.Parsec
@@ -25,6 +25,12 @@ data Period = Daily | Weekly | Monthly | Quarterly | Yearly | DefaultPeriod
 instance Default Period where
     def = DefaultPeriod
 
+data ChartType = GanttChart | Markdown
+ deriving (Data, Typeable, Show, Eq)
+
+instance Default ChartType where
+    def = GanttChart
+          
 data Gantt = Gantt {
       start :: Day
     , dur :: Int
@@ -37,6 +43,7 @@ data Gantt = Gantt {
     , today :: Day
     -- Command line only options.
     , font    :: String
+    , labelWidth :: Int
     , standalone :: Bool
     , markToday :: Bool 
 --    , outfile :: FilePath
@@ -44,6 +51,7 @@ data Gantt = Gantt {
     , file    :: FilePath
     , template :: FilePath
     , chartopts :: String
+    , charttype :: ChartType
 } deriving (Data, Typeable, Show)
 
 defaultGantt = Gantt {
@@ -58,6 +66,7 @@ defaultGantt = Gantt {
     , today = def
     -- Command line only options.
     , font  = def
+    , labelWidth = 15
     , standalone = True
     , markToday = True
 --    , outfile :: FilePath
@@ -65,6 +74,7 @@ defaultGantt = Gantt {
 --    , file    :: FilePath
     , template = def
     , chartopts = def
+    , charttype = def
     , file = def
 } 
 
@@ -96,7 +106,7 @@ gantt =
   (\es -> getState >>= 
   (\g -> (return $  g { entries = es 
                       }) ))
-
+          
 -- Configuration -----------------------------------------
 
 config :: GenParser Char Gantt [ConfigLine]
@@ -106,8 +116,9 @@ config = updateState (\cfg -> cfg {msg = (msg cfg) ++ " config;" }) >>
 configline :: GenParser Char Gantt ConfigLine
 configline = 
   updateState (\cfg -> cfg {msg = (msg cfg) ++ " configline;" }) >>
+  skipMany (try comment <|> blankline ) >>
   (try startDate <|> try duration <|> try reportPeriodSize <|> try reportBy <|> try todayLine) >>= (\l -> 
-  skipMany blankline >>
+  skipMany (try comment <|> blankline ) >>
   return l)
 
 startDate :: GenParser Char Gantt ConfigLine
@@ -207,7 +218,7 @@ chartline :: GenParser Char Gantt ChartLine
 chartline = 
   updateState (\cfg -> cfg {msg = (msg cfg) ++ " chartline: " }) >>
   (try group <|> try task <|> try milestone <|> try deliverable) >>= (\l ->
-  skipMany blankline >> return l)
+  skipMany (try comment <|> blankline ) >> return l)
 
 group :: GenParser Char Gantt ChartLine
 group = 
@@ -234,6 +245,7 @@ task =
 
 slippedTask :: String -> Int -> Int -> GenParser Char Gantt ChartLine
 slippedTask nm st end = range >>= (\(st', end') -> return $  SlippedTask nm st end st' end')
+
 
 milestone :: GenParser Char Gantt ChartLine
 milestone = 
@@ -289,6 +301,9 @@ aString =  spaces >> many (noneOf " \t\n\r")
   
 blankline :: GenParser Char Gantt ()
 blankline = try (manyTill (oneOf " \t") (newline) >> return ())
+
+comment :: GenParser Char Gantt ()
+comment = spaces >> char '#' >> manyTill anyChar newline >> return ()
 
 -- | Needs @foldl'@ from Data.List and 
 -- @digitToInt@ from Data.Char.

@@ -5,6 +5,7 @@ build:
 	stack build
 
 test: build
+	$(GANTT_CHART) test.gantt
 	$(GANTT_CHART) monthly.gantt
 	$(GANTT_CHART) -o daily.pdf daily.gantt
 	$(GANTT_CHART) -o monthly.pdf monthly.gantt
@@ -12,6 +13,8 @@ test: build
 
 %.tex: %.gantt templates/gantt.st
 	$(GANTT_CHART) $< > $@
+%.pdf: %.gantt templates/gantt.st
+	$(GANTT_CHART) $< -o $@
 
 test-%: build
 	$(GANTT_CHART) --verbose --winst=2016-08-01 --windur=4 -o $(*).tex $(*).gantt

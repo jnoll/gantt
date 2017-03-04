@@ -50,8 +50,11 @@ executable gantt-chart
   
   -- Modules included in this executable, other than Main.
   other-modules:
-   Parse
-   , Paths_gantt
+                Parse
+              , DateRange
+              , FormatPGF
+              , FormatMarkdown
+              , Paths_gantt
       
   
   -- LANGUAGE extensions used by modules in this package.

@@ -51,20 +51,20 @@ $endif$
   group height=.5,
   group top shift = 0.2,
   group right peak height = 0.3,
-  group right peak width = 7,
+  group right peak width = 0.3,
   group left peak height = 0.3,
-  group left peak width = 7,
+  group left peak width = 0.3,
   group peaks tip position=0,
-  group label node/.append style={align=left, text width=15em}, % was 9em
+  group label node/.append style={align=left, text width=$labelWidth$em}, % was 9em
   group/.append style={draw=none, fill=black!50},
 %
   bar label font=\\mdseries\\small\\color{black},
-  bar label node/.append style={left=-1em, align=left, text width=15em}, % was 9em
+  bar label node/.append style={left=-1em, align=left, text width=$labelWidth$em}, % was 9em
   bar/.append style={draw=none, fill=blue},
 %
   link/.append style={[-tothick, blue},
-$endif$]{$start$}{$end$}
-$if(start)$
+$endif$]{$windowStart$}{$end$}
+$if(windowStart)$
 $calendar$
 $endif$
 $body$
